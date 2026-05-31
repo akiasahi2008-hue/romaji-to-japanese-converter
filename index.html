@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ローマ字→日本語変換 (Local)</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Yu Gothic UI", "Meiryo", sans-serif;
+            background: #1a1a1a;
+            color: #d0d0d0;
+            line-height: 1.6;
+        }
+        .wrap {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 24px 16px 48px;
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 1.5rem;
+            color: #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .lead {
+            margin: 0 0 20px;
+            color: #aaa;
+            font-size: 0.95rem;
+        }
+        .panel {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            margin-bottom: 20px;
+        }
+        #editor {
+            width: 100%;
+            min-height: 320px;
+            max-height: 70vh;
+            padding: 14px 16px;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #000;
+            color: #ffd54f;
+            font-family: "Yu Gothic UI", "Meiryo", monospace;
+            font-size: 1.05rem;
+            line-height: 1.75;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        #editor:focus {
+            outline: none;
+            border-color: #666;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+        }
+        #editor:empty:before {
+            content: attr(data-placeholder);
+            color: #666;
+            pointer-events: none;
+        }
+        #editor .line.romaji { color: #ffd54f; }
+        #editor .line.jp { color: #ffffff; }
+        #editor .line.empty { min-height: 1.75em; }
+        
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-top: 12px;
+        }
+        button {
+            appearance: none;
+            border: 1px solid #ffd54f;
+            background: #ffd54f;
+            color: #111;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #ffea00;
+            border-color: #ffea00;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #333;
+            border-color: #555;
+            color: #eee;
+        }
+        .btn-secondary:hover {
+            background: #444;
+            border-color: #666;
+        }
+        
+        .hint {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        .hint strong { color: #ccc; }
+        
+        #status {
+            margin-top: 12px;
+            min-height: 1.4em;
+            font-size: 0.9rem;
+        }
+        #status.error { color: #ff6b6b; }
+        #status.ok { color: #8bc34a; }
+        #status.busy { color: #888; }
+        
+        .steps {
+            margin: 20px 0 0;
+            padding-left: 1.2em;
+            color: #999;
+            font-size: 0.9rem;
+        }
+        kbd {
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.85em;
+            color: #ddd;
+        }
+        .legend {
+            display: flex;
+            gap: 16px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: #888;
+        }
+        .legend span:before {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            margin-right: 6px;
+            vertical-align: -2px;
+        }
+        .legend .romaji:before { background: #ffd54f; }
+        .legend .jp:before { background: #fff; }
+        
+        #settingsPanel {
+            display: none;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        #settingsPanel.active {
+            display: block;
+        }
+        .form-group {
+            margin-bottom: 12px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            background: #000;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #ffd54f;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>
+        <span>ローマ字→日本語変換 (Local)</span>
+        <button type="button" class="btn-secondary" id="toggleSettingsBtn" style="font-size: 0.8rem; padding: 4px 8px;">⚙️ 設定 (APIキー)</button>
+    </h1>
+    <p class="lead">ブラウザから直接 Gemini API を呼び出します。（PHP・サーバー不要）</p>
+
+    <div id="settingsPanel">
+        <div class="form-group">
+            <label for="apiKeyInput">Gemini API キー (※このブラウザ内にのみ保存されます)</label>
+            <input type="password" id="apiKeyInput" placeholder="AIzaSy...">
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button type="button" id="saveSettingsBtn" class="btn-secondary">保存して閉じる</button>
+            <button type="button" id="clearSettingsBtn" class="btn-secondary" style="background: #522; border-color: #733; color: #fcc;">キーを削除</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div id="editor" contenteditable="true" spellcheck="false"
+             data-placeholder="kyoumoiitenkidakedo, asuhatenkigayokunaimitaidesu.&#10;(Enter → Ctrl+Shift+J)"></div>
+        <div class="legend">
+            <span class="romaji">ローマ字</span>
+            <span class="jp">日本語</span>
+        </div>
+        <div class="toolbar">
+            <button type="button" id="convertBtn">変換 (Ctrl+Shift+J)</button>
+            <span class="hint">空行にカーソルがあるときは<strong>直上の行</strong>を変換</span>
+        </div>
+        <div id="status" aria-live="polite"></div>
+    </div>
+
+    <ol class="steps">
+        <li>ローマ字を入力</li>
+        <li><kbd>Enter</kbd> で次の行へ</li>
+        <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd> または「変換」ボタン</li>
+    </ol>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var MSG_NO_LINE = '変換対象の行がありません。';
+    var MSG_BUSY = '変換中…';
+    var MSG_FAIL = '変換に失敗しました。';
+    var MSG_ERR = 'エラーが発生しました。';
+    var MSG_OK = '変換しました: ';
+
+    var editor = document.getElementById('editor');
+    var convertBtn = document.getElementById('convertBtn');
+    var statusEl = document.getElementById('status');
+    var busy = false;
+    var cursorLineAfterEnter = null;
+
+    var JP_RE = /[぀-ゟ゠-ヿ一-鿿ｦ-ﾟ]/;
+
+    // --- 設定（APIキー）管理 ---
+    var apiKeyInput = document.getElementById('apiKeyInput');
+    var settingsPanel = document.getElementById('settingsPanel');
+    var toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
+    
+    toggleSettingsBtn.addEventListener('click', function() {
+        settingsPanel.classList.toggle('active');
+    });
+    
+    document.getElementById('saveSettingsBtn').addEventListener('click', function() {
+        localStorage.setItem('romaji_api_key', apiKeyInput.value.trim());
+        settingsPanel.classList.remove('active');
+        setStatus('設定を保存しました。', 'ok');
+    });
+
+    document.getElementById('clearSettingsBtn').addEventListener('click', function() {
+        localStorage.removeItem('romaji_api_key');
+        apiKeyInput.value = '';
+        setStatus('APIキーを削除しました。', 'ok');
+    });
+
+    // 読み込み時の復元
+    var savedKey = localStorage.getItem('romaji_api_key');
+    if (savedKey) apiKeyInput.value = savedKey;
+
+    // 初回起動時にAPIキーがない場合は設定パネルを開く
+    if (!savedKey) {
+        settingsPanel.classList.add('active');
+    }
+
+    // --- エディタ関連関数 ---
+    function setStatus(msg, type) {
+        statusEl.textContent = msg || '';
+        statusEl.className = type || '';
+    }
+
+    function escapeHtml(text) {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function getPlainText() {
+        return editor.innerText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    }
+
+    function getLines() {
+        return getPlainText().split('\n');
+    }
+
+    function isJapaneseLine(line) {
+        return JP_RE.test(line);
+    }
+
+    function getCursorLineFromSelection() {
+        var sel = window.getSelection();
+        if (!sel.rangeCount) return 0;
+        var node = sel.anchorNode;
+        var el = node.nodeType === Node.TEXT_NODE ? node.parentNode : node;
+        while (el && el !== editor) {
+            if (el.classList && el.classList.contains('line')) {
+                var lineEls = editor.querySelectorAll('.line');
+                for (var i = 0; i < lineEls.length; i++) {
+                    if (lineEls[i] === el) return i;
+                }
+            }
+            el = el.parentNode;
+        }
+        return getLineIndex(getPlainText(), getCursorOffset());
+    }
+
+    function splitEditorLines() {
+        var lines = getPlainText().split('\n');
+        while (lines.length > 1 && lines[lines.length - 1] === '' && lines[lines.length - 2] === '') {
+            lines.pop();
+        }
+        return lines;
+    }
+
+    function ensureLineExists(lines, lineIndex) {
+        while (lines.length <= lineIndex) lines.push('');
+        return lines;
+    }
+
+    function getLineIndex(text, pos) {
+        return text.substring(0, pos).split('\n').length - 1;
+    }
+
+    function getCursorOffset() {
+        var sel = window.getSelection();
+        if (!sel.rangeCount) return 0;
+        var range = sel.getRangeAt(0);
+        var pre = range.cloneRange();
+        pre.selectNodeContents(editor);
+        pre.setEnd(range.endContainer, range.endOffset);
+        return pre.toString().length;
+    }
+
+    function setCursorToLine(lineIndex) {
+        var lineEls = editor.querySelectorAll('.line');
+        if (lineEls.length === 0) return;
+        if (lineIndex < 0) lineIndex = 0;
+        if (lineIndex >= lineEls.length) lineIndex = lineEls.length - 1;
+
+        var el = lineEls[lineIndex];
+        var range = document.createRange();
+        var sel = window.getSelection();
+
+        if (el.classList.contains('empty')) {
+            range.setStart(el, 0);
+            range.collapse(true);
+        } else {
+            var tn = el.firstChild;
+            if (tn && tn.nodeType === Node.TEXT_NODE) {
+                range.setStart(tn, tn.textContent.length);
+                range.collapse(true);
+            } else {
+                range.selectNodeContents(el);
+                range.collapse(false);
+            }
+        }
+        sel.removeAllRanges();
+        sel.addRange(range);
+        editor.focus();
+    }
+
+    function renderEditor(lines, cursorLine) {
+        var html = lines.map(function (line) {
+            if (line === '') return '<div class="line empty"><br></div>';
+            var cls = isJapaneseLine(line) ? 'line jp' : 'line romaji';
+            return '<div class="' + cls + '">' + escapeHtml(line) + '</div>';
+        }).join('');
+        editor.innerHTML = html;
+        setCursorToLine(cursorLine);
+    }
+
+    function findTargetLineIndex(lines, cursorLine) {
+        if (lines[cursorLine].trim() === '' && cursorLine > 0) return cursorLine - 1;
+        return cursorLine;
+    }
+
+    // --- Gemini API 呼び出し (ローカルからの直接通信) ---
+    async function convertLine() {
+        if (busy) return;
+
+        var apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+            setStatus('設定からAPIキーを入力・保存してください。', 'error');
+            settingsPanel.classList.add('active');
+            return;
+        }
+
+        var lines = splitEditorLines();
+        var cursorLine;
+
+        if (cursorLineAfterEnter !== null) {
+            cursorLine = cursorLineAfterEnter;
+            ensureLineExists(lines, cursorLine);
+        } else {
+            cursorLine = getCursorLineFromSelection();
+        }
+
+        var targetLine = findTargetLineIndex(lines, cursorLine);
+        var romaji = lines[targetLine].trim();
+
+        if (!romaji) {
+            setStatus(MSG_NO_LINE, 'error');
+            return;
+        }
+
+        var restoreLine = (targetLine !== cursorLine) ? cursorLine : targetLine;
+
+        busy = true;
+        convertBtn.disabled = true;
+        setStatus(MSG_BUSY, 'busy');
+
+        var model = 'gemini-3.1-flash-lite';
+        var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
+        
+        // ★ 強化版プロンプト（タイプミス対応ルール追加）
+        var systemPrompt = "あなたはローマ字を日本語に変換する専用ツールです。\n" +
+                           "入力されたローマ字（ヘボン式/訓令式）を、音に忠実に自然な漢字かな交じり文に変換してください。\n\n" +
+                           "【厳守事項】\n" +
+                           "1. 勝手な意訳、文脈からの推測、元の発音にない単語の補完（幻覚）は絶対にしないでください。\n" +
+                           "2. 助詞・語尾・接続詞は変えないこと。\n" +
+                           "3. 変換後のテキストのみ出力し、説明・挨拶・補足は一切出力しないこと。\n" ;
+
+        var requestBody = {
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ parts: [{ text: romaji }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error?.message || 'HTTP Error ' + response.status);
+            }
+
+            if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+                throw new Error('APIから変換結果が返されませんでした。');
+            }
+
+            var converted = data.candidates[0].content.parts[0].text.trim();
+            if (!converted) {
+                throw new Error('変換結果が空です。');
+            }
+
+            lines[targetLine] = converted;
+            ensureLineExists(lines, restoreLine);
+            renderEditor(lines, restoreLine);
+            cursorLineAfterEnter = null;
+            setStatus(MSG_OK + converted, 'ok');
+
+        } catch (err) {
+            setStatus(MSG_ERR + ' ' + err.message, 'error');
+        } finally {
+            busy = false;
+            convertBtn.disabled = false;
+        }
+    }
+
+    convertBtn.addEventListener('click', convertLine);
+
+    editor.addEventListener('keydown', function (e) {
+        if (e.ctrlKey && e.shiftKey && (e.key === 'J' || e.key === 'j')) {
+            e.preventDefault();
+            convertLine();
+            return;
+        }
+        if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey) {
+            var text = getPlainText();
+            var pos = getCursorOffset();
+            cursorLineAfterEnter = getLineIndex(text, pos) + 1;
+            setTimeout(function () {
+                var domLine = getCursorLineFromSelection();
+                if (domLine > cursorLineAfterEnter) {
+                    cursorLineAfterEnter = domLine;
+                }
+            }, 0);
+            return;
+        }
+    });
+})();
+</script>
+</body>
+</html>
